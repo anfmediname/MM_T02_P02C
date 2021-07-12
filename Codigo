@@ -1,0 +1,140 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from Paraview import generarArchivo
+
+def funcionG(x,y,t):
+    G0=2.5
+    sigma=0.07
+    x0=0.3
+    y0=0.7
+    
+    resul1=(G0*((x-x0)**2+(y-y0)**2+2.0*sigma))/(2.0*np.pi*sigma**6)
+    resul2=np.exp(-((x-x0)**2+(y-y0)**2)/(2.0*sigma**2))
+    resul3=np.sin(omega*t)
+    resul4=resul1*resul2*resul3
+    #print(str(resul4))
+    return resul4
+
+
+#Parámetros
+x_total = 1.0 #m
+y_total = 1.0 #m
+omega=250*np.pi #En radianes/seg
+T1=273.15 + 20.0 #K
+T2=273.15 + 150.0 #K
+
+#Parámetros de silumación
+dx = 0.05
+dy = 0.05
+tf = 2*np.pi/omega
+it = 100
+dt = tf/it
+tiempo = np.zeros((it+1,1))
+t=0.0
+shi = 0.5
+
+#malla 
+nx = int (x_total/dx) +1 
+ny = int (y_total/dy) +1 
+nodos = nx*ny
+
+#Inicializar vectores
+T = np.zeros(nodos)
+vec_F = np.zeros(nodos)
+mat_futura = np.zeros((nodos,nodos))
+mat_actual = np.zeros((nodos,nodos))
+mat_T = np.zeros((nodos,it+1))
+mat_T2 = np.zeros((nodos,it+1))
+
+
+#Condiciones iniciales
+T[:] = T1
+mat_T[:,0] = T1
+for i in range(ny):
+    mat_T[nx+nx*i-1,0] = T2
+    T[nx+nx*i-1] = T2
+
+y_act=0
+x_act=0
+
+#Para generar el archivo vtk
+posiciones=np.zeros((nodos,3))
+eq=0
+for j in range (ny):
+    for i in range(nx):
+        posiciones[eq,0]=float(dx*i)
+        posiciones[eq,1]=float(dy*j)
+        posiciones[eq,2]=0.00000000
+        eq=eq+1
+
+for k in range(1,it+1):
+    tiempo[k]=k*dt
+    t=k*dt
+    #print(str(t))
+    eq=0
+    
+    for j in range(ny):
+        x_act=0.0
+        for i in range(nx):
+            
+            nc=eq  #Nodo central
+            nl=eq-1 #Nodo left
+            nr=eq+1 #Nodo right
+            nu=eq+nx #Nodo up
+            nd=eq-nx #Nodo down
+            #print("eq",eq)
+            
+            if i==0: #Pared izquierda
+                mat_futura[eq,nc]= 1.0
+                vec_F[eq]=T1
+                #print("Pared izquierda")
+            
+            elif j==0 and i<nx-1: #Pared inferior
+                mat_futura[eq,nc]= 1.0
+                vec_F[eq]=T1
+                #print("Pared inferior")
+            
+            elif i==nx-1: #Pared derecha
+                mat_futura[eq,nc]= 1.0
+                vec_F[eq]=T2
+                #print("Pared derecha")
+            
+            elif j<ny-1: #Nodo interno
+                mat_futura[eq,nc]= 1.0+dt*shi*(2.0/dx**2 + 2.0/dy**2)
+                mat_futura[eq,nl]= -dt*shi/dx**2
+                mat_futura[eq,nr]= -dt*shi/dx**2
+                mat_futura[eq,nu]= -dt*shi/dy**2
+                mat_futura[eq,nd]= -dt*shi/dy**2
+                
+                mat_actual[eq,nc]= 1.0-dt*(1.0-shi)*(2.0/dx**2 + 2.0/dy**2)
+                mat_actual[eq,nl]= dt*(1.0-shi)/dx**2
+                mat_actual[eq,nr]= dt*(1.0-shi)/dx**2
+                mat_actual[eq,nu]= dt*(1.0-shi)/dy**2
+                mat_actual[eq,nd]= dt*(1.0-shi)/dy**2
+                
+                vec_F[eq]=-funcionG(x_act,y_act,t)*dt
+            else: #Pared superior
+                mat_futura[eq,nc]= 1.0
+                vec_F[eq]=T1
+                #print("Pared superior")
+                
+            eq+=1
+            x_act=x_act+dx
+        y_act=y_act+dy
+    y_act=0.0
+    #t=dt+t
+    
+    m_inv=np.linalg.inv(mat_futura) #Inversa de la matriz de coeficientes mat
+    T=m_inv@((mat_actual@T) + vec_F)
+    mat_T[:,k]= T
+    
+    generarArchivo(k,nodos,posiciones,nx,ny,T)
+    
+
+
+plt.figure()
+plt.plot(tiempo,np.transpose(mat_T[round(0.3/dx+nx*0.7/dx),:]),"c")
+plt.title('Temperatura en el centro de la fuente')
+plt.xlabel('Tiempo (s)')
+plt.ylabel('Temperatura (K)')
+plt.grid()
